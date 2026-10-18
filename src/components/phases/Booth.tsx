@@ -265,7 +265,7 @@ export default function Booth({
           />
           {recording ? (live ? "recording · transcribing" : "recording") : "standby"}
         </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-faint">
+        <span className="hidden font-mono text-[10px] uppercase tracking-[0.24em] text-faint sm:block">
           Roll 01 · The dream
         </span>
       </header>
