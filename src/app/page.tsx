@@ -5,15 +5,24 @@ import Booth from "@/components/phases/Booth";
 import Marquee from "@/components/phases/Marquee";
 import Premiere from "@/components/phases/Premiere";
 import Production, { type SceneState } from "@/components/phases/Production";
+import ThemeToggle from "@/components/ThemeToggle";
 import { TrailerEngine, type TrailerAssets } from "@/lib/trailer/engine";
 import {
   hashText,
   sceneSeed,
   type Aspect,
+  type Scene,
   type TrailerScript,
 } from "@/lib/trailer/types";
 
 type Phase = "marquee" | "booth" | "production" | "premiere";
+
+const PHASE_HASH: Record<Phase, string> = {
+  marquee: "",
+  booth: "#booth",
+  production: "#production",
+  premiere: "#premiere",
+};
 
 const FALLBACK_FONTS = {
   display: '"Bebas Neue", "Arial Narrow", Impact, sans-serif',
@@ -75,24 +84,48 @@ async function fetchSceneImage(
   aspect: string,
   index: number,
   failed: number[],
+  tone: string,
+  onWait: (secs: number | null) => void,
 ): Promise<SceneImage | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 24; attempt++) {
     try {
       const response = await fetch("/api/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, aspect, seed }),
+        body: JSON.stringify({ prompt, aspect, seed, tone }),
       });
       if (response.ok) {
         const blob = await response.blob();
         if (blob.size > 1000) {
-          const url = URL.createObjectURL(blob);
-          const bitmap = await createImageBitmap(blob);
+          const raw = await createImageBitmap(blob);
+          const cropH = Math.round(raw.height * 0.06) + 2;
+          const bitmap = await createImageBitmap(
+            raw,
+            0,
+            0,
+            raw.width,
+            raw.height - cropH,
+          );
+          raw.close();
+          const preview = document.createElement("canvas");
+          preview.width = bitmap.width;
+          preview.height = bitmap.height;
+          preview.getContext("2d")?.drawImage(bitmap, 0, 0);
+          const url = await new Promise<string>((resolve) => {
+            preview.toBlob(
+              (out) =>
+                resolve(out ? URL.createObjectURL(out) : URL.createObjectURL(blob)),
+              "image/jpeg",
+              0.85,
+            );
+          });
+          onWait(null);
           return { bitmap, url };
         }
       } else if (response.status === 429) {
         const data = (await response.json().catch(() => ({}))) as { retryAfter?: number };
-        const wait = Math.min(Math.max(Number(data.retryAfter) || 15, 6), 26) * 1000;
+        const wait = Math.min(Math.max(Number(data.retryAfter) || 6, 4), 10) * 1000;
+        onWait(Math.ceil(wait / 1000));
         await sleep(wait);
         continue;
       }
@@ -101,6 +134,7 @@ async function fetchSceneImage(
     }
     await sleep(2500);
   }
+  onWait(null);
   if (!failed.includes(index)) failed.push(index);
   return null;
 }
@@ -121,6 +155,7 @@ export default function Home() {
   const [stagePct, setStagePct] = useState(0);
   const [error, setError] = useState("");
   const [take, setTake] = useState(1);
+  const [labWait, setLabWait] = useState<number | null>(null);
 
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -135,6 +170,31 @@ export default function Home() {
   const mutedRef = useRef(muted);
   const takeRef = useRef(1);
   const urlsRef = useRef<string[]>([]);
+  const phaseRef = useRef<Phase>("marquee");
+  const genRef = useRef(0);
+  const waitsRef = useRef(new Map<number, number>());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const deadlines = [...waitsRef.current.values()];
+      if (deadlines.length === 0) {
+        setLabWait(null);
+        return;
+      }
+      const remaining = Math.max(
+        Math.ceil((Math.max(...deadlines) - Date.now()) / 1000),
+        0,
+      );
+      setLabWait(remaining);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const goTo = useCallback((next: Phase) => {
+    if (phaseRef.current === "production" && next !== "production") genRef.current += 1;
+    phaseRef.current = next;
+    setPhase(next);
+  }, []);
 
   useEffect(() => {
     scriptRef.current = script;
@@ -200,6 +260,26 @@ export default function Home() {
     };
   }, [phase, aspect, mountEngine]);
 
+  useEffect(() => {
+    const hash = PHASE_HASH[phase];
+    if (window.location.hash === hash) return;
+    const target = hash || `${window.location.pathname}${window.location.search}`;
+    window.history.pushState({ djPhase: phase }, "", target);
+  }, [phase]);
+
+  useEffect(() => {
+    const onPop = (event: PopStateEvent) => {
+      const state = event.state as { djPhase?: Phase } | null;
+      let next: Phase = state?.djPhase ?? "marquee";
+      if (!(next in PHASE_HASH)) next = "marquee";
+      if ((next === "production" || next === "premiere") && !scriptRef.current) next = "booth";
+      if (next === "premiere" && !assetsRef.current) next = "production";
+      goTo(next);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [goTo]);
+
   function markScene(index: number, state: SceneState) {
     setSceneStates((prev) => {
       const next = [...prev];
@@ -214,7 +294,8 @@ export default function Home() {
 
     takeRef.current += 1;
     setTake(takeRef.current);
-    setPhase("production");
+    const gen = ++genRef.current;
+    goTo("production");
     setError("");
     setPlaying(false);
     setProgress(0);
@@ -240,6 +321,7 @@ export default function Home() {
         throw new Error(data.error ?? "The screenplay writer is napping. Try again.");
       }
       const nextScript = (await scriptResponse.json()) as TrailerScript;
+      if (genRef.current !== gen) return;
       setScript(nextScript);
       setSceneStates(
         nextScript.scenes.map((scene) => (scene.kind === "end_card" ? "ready" : "waiting")),
@@ -249,7 +331,7 @@ export default function Home() {
       setStageLabel("Recording the voiceover");
       setStagePct(0.14);
       const audioCtx = ensureAudioCtx();
-      const voBuffers = await Promise.all(
+      const voPromise = Promise.all(
         nextScript.scenes.map(async (scene) => {
           if (!scene.vo || scene.kind === "title" || scene.kind === "end_card") return null;
           try {
@@ -273,21 +355,26 @@ export default function Home() {
 
       const base = hashText(text);
       const images: TrailerAssets["images"] = nextScript.scenes.map(() => null);
-      const total = nextScript.scenes.length;
       const titleIndex = nextScript.scenes.findIndex((s) => s.kind === "title");
       const twistIndex = nextScript.scenes.findIndex((s) => s.kind === "twist");
       const failed: number[] = [];
-      const shotCount = nextScript.scenes.filter(
-        (s) => s.kind !== "end_card" && s.kind !== "title",
-      ).length;
-      let shots = 0;
+      waitsRef.current.clear();
 
-      for (let i = 0; i < total; i++) {
-        const scene = nextScript.scenes[i];
-        if (scene.kind === "end_card" || scene.kind === "title") continue;
-        shots += 1;
-        setStageLabel(`Filming scene ${shots} of ${shotCount}`);
-        setStagePct(0.2 + (0.72 * shots) / shotCount);
+      const setWaitFor = (i: number) => (secs: number | null) => {
+        if (secs === null) waitsRef.current.delete(i);
+        else waitsRef.current.set(i, Date.now() + secs * 1000);
+      };
+
+      const queue = nextScript.scenes
+        .map((scene, i) => ({ scene, i }))
+        .filter(({ scene }) => scene.kind !== "end_card" && scene.kind !== "title");
+      const shotCount = queue.length;
+      let done = 0;
+      let cursor = 0;
+
+      const runShot = async ({ scene, i }: { scene: Scene; i: number }) => {
+        if (genRef.current !== gen) return;
+        setStageLabel(`Filming scene ${Math.min(done + 1, shotCount)} of ${shotCount}`);
         markScene(i, "filming");
         const shot = await fetchSceneImage(
           scene.imagePrompt,
@@ -295,7 +382,12 @@ export default function Home() {
           aspect,
           i,
           failed,
+          nextScript.tone,
+          setWaitFor(i),
         );
+        if (genRef.current !== gen) return;
+        done += 1;
+        setStagePct(0.18 + (0.72 * done) / shotCount);
         if (shot) {
           images[i] = shot.bitmap;
           urlsRef.current.push(shot.url);
@@ -308,8 +400,18 @@ export default function Home() {
         } else {
           markScene(i, "reshoot");
         }
-        await sleep(1800);
-      }
+      };
+
+      const worker = async () => {
+        while (cursor < queue.length) {
+          const item = queue[cursor];
+          cursor += 1;
+          await runShot(item);
+          if (genRef.current !== gen) return;
+        }
+      };
+      await Promise.all([worker(), worker()]);
+      if (genRef.current !== gen) return;
 
       if (titleIndex >= 0) {
         images[titleIndex] =
@@ -320,7 +422,7 @@ export default function Home() {
         setStageLabel("Reshooting the lost scenes");
         setStagePct(0.93);
         for (const i of failed) {
-          await sleep(6000);
+          if (genRef.current !== gen) return;
           markScene(i, "filming");
           const retry = await fetchSceneImage(
             nextScript.scenes[i].imagePrompt,
@@ -328,7 +430,10 @@ export default function Home() {
             aspect,
             i,
             [],
+            nextScript.tone,
+            setWaitFor(i),
           );
+          if (genRef.current !== gen) return;
           if (retry) {
             images[i] = retry.bitmap;
             if (titleIndex >= 0 && i === twistIndex) images[titleIndex] = retry.bitmap;
@@ -345,14 +450,20 @@ export default function Home() {
         }
       }
 
+      const voBuffers = await voPromise;
+      waitsRef.current.clear();
       setStageLabel("Scoring and color grading");
       setStagePct(0.97);
+      if (genRef.current !== gen) return;
       assetsRef.current = { images, voBuffers };
 
-      await sleep(700);
+      await sleep(600);
+      if (genRef.current !== gen) return;
       setStagePct(1);
-      setPhase("premiere");
+      goTo("premiere");
     } catch (err) {
+      waitsRef.current.clear();
+      if (genRef.current !== gen) return;
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   }
@@ -421,16 +532,17 @@ export default function Home() {
 
   return (
     <div className="relative min-h-dvh overflow-x-hidden">
+      <ThemeToggle />
       {phase === "marquee" && (
         <Marquee
           onStart={(mode) => {
             setStartMode(mode);
-            setPhase("booth");
+            goTo("booth");
           }}
           onSample={(sample) => {
             setDream(sample);
             setStartMode("type");
-            setPhase("booth");
+            goTo("booth");
           }}
         />
       )}
@@ -446,7 +558,7 @@ export default function Home() {
           vibe={vibe}
           onVibe={setVibe}
           autoFocus={startMode === "type"}
-          onBack={() => setPhase("marquee")}
+          onBack={() => goTo("marquee")}
           onRoll={() => void generate()}
         />
       )}
@@ -456,11 +568,12 @@ export default function Home() {
           take={take}
           label={stageLabel || "Preparing the shoot"}
           pct={stagePct}
+          waiting={labWait}
           script={script}
           sceneStates={sceneStates}
           thumbs={thumbs}
           error={error}
-          onBack={() => setPhase("booth")}
+          onBack={() => goTo("booth")}
         />
       )}
 
@@ -479,8 +592,8 @@ export default function Home() {
           onToggleMute={handleToggleMute}
           onToggleAspect={() => void handleToggleAspect()}
           onDownload={() => void handleDownload()}
-          onNewTake={() => setPhase("booth")}
-          onBack={() => setPhase("booth")}
+          onNewTake={() => goTo("booth")}
+          onBack={() => goTo("booth")}
         />
       )}
     </div>

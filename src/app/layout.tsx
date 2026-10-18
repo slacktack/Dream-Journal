@@ -25,20 +25,32 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050507",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#07060d" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f5fb" },
+  ],
   width: "device-width",
   initialScale: 1,
 };
+
+const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("dj-theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";}document.documentElement.dataset.theme=t;}catch(e){document.documentElement.dataset.theme="dark";}})();`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-theme="dark"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${bebas.variable} h-full`}
     >
-      <body className="min-h-dvh bg-[#050507] text-zinc-100 antialiased">
-        <div className="film-grain" aria-hidden />
-        <div className="film-vignette" aria-hidden />
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className="min-h-dvh bg-paper text-ink antialiased">
+        <div className="aurora" aria-hidden>
+          <div className="blob" />
+          <div className="blob b2" />
+        </div>
         {children}
       </body>
     </html>

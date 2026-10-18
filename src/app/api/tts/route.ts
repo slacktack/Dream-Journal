@@ -32,15 +32,16 @@ interface ToneStyle {
   gender: "male" | "female";
   rate: string;
   pitch: string;
+  voice?: Record<string, string>;
 }
 
 const TONE_STYLE: Record<string, ToneStyle> = {
-  horror: { gender: "male", rate: "-16%", pitch: "-10%" },
-  blockbuster: { gender: "male", rate: "-6%", pitch: "-5%" },
-  romance: { gender: "female", rate: "-4%", pitch: "+3%" },
-  noir: { gender: "male", rate: "-12%", pitch: "-6%" },
-  fantasy: { gender: "male", rate: "-8%", pitch: "-4%" },
-  comedy: { gender: "female", rate: "+2%", pitch: "+6%" },
+  horror: { gender: "male", rate: "-14%", pitch: "-8%", voice: { en: "en-US-ChristopherNeural" } },
+  blockbuster: { gender: "male", rate: "-8%", pitch: "-4%", voice: { en: "en-US-BrianNeural" } },
+  romance: { gender: "female", rate: "-8%", pitch: "+2%", voice: { en: "en-US-JennyNeural" } },
+  noir: { gender: "male", rate: "-12%", pitch: "-6%", voice: { en: "en-US-ChristopherNeural" } },
+  fantasy: { gender: "male", rate: "-10%", pitch: "-3%", voice: { en: "en-US-BrianNeural" } },
+  comedy: { gender: "female", rate: "-2%", pitch: "+4%", voice: { en: "en-US-AriaNeural" } },
 };
 
 function chunkText(text: string, max = 800): string[] {
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
   const tone = typeof body.tone === "string" ? body.tone : "blockbuster";
   const voices = VOICE_MAP[lang] ?? VOICE_MAP.en;
   const style = TONE_STYLE[tone] ?? TONE_STYLE.blockbuster;
-  const voice = style.gender === "female" ? voices.female : voices.male;
+  const voice = style.voice?.[lang] ?? (style.gender === "female" ? voices.female : voices.male);
 
   try {
     const audio = await synthNeural(text, voice, style.rate, style.pitch);

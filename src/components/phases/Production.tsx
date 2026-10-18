@@ -2,12 +2,15 @@
 
 import type { TrailerScript } from "@/lib/trailer/types";
 
+import BackButton from "@/components/BackButton";
+
 export type SceneState = "waiting" | "filming" | "ready" | "reshoot";
 
 interface ProductionProps {
   take: number;
   label: string;
   pct: number;
+  waiting: number | null;
   script: TrailerScript | null;
   sceneStates: SceneState[];
   thumbs: (string | null)[];
@@ -16,11 +19,11 @@ interface ProductionProps {
 }
 
 const KIND_LABEL: Record<string, string> = {
-  setup: "SETUP",
-  escalation: "ESCALATION",
-  twist: "THE TWIST",
-  title: "TITLE CARD",
-  end_card: "THE POSTER",
+  setup: "Setup",
+  escalation: "Escalation",
+  twist: "The twist",
+  title: "Title card",
+  end_card: "The poster",
 };
 
 function stateStamp(state: SceneState): string {
@@ -28,11 +31,11 @@ function stateStamp(state: SceneState): string {
     case "filming":
       return "REC";
     case "ready":
-      return "LOCKED";
+      return "Locked";
     case "reshoot":
-      return "RESHOOT";
+      return "Reshoot";
     default:
-      return "QUEUED";
+      return "Queued";
   }
 }
 
@@ -40,6 +43,7 @@ export default function Production({
   take,
   label,
   pct,
+  waiting,
   script,
   sceneStates,
   thumbs,
@@ -50,67 +54,74 @@ export default function Production({
 
   return (
     <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-6 sm:px-6">
-      <header className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] text-zinc-600">
-        <button
-          type="button"
-          onClick={onBack}
-          className="cursor-pointer text-zinc-500 transition-colors hover:text-amber-200"
-        >
-          ← the booth
-        </button>
-        <span className="text-zinc-400">Dream Journal Pictures · Sound Stage 9</span>
-        <span>take {String(take).padStart(2, "0")}</span>
+      <header className="flex items-center justify-between gap-3 pr-12 lg:pr-0">
+        <BackButton label="The booth" onClick={onBack} />
+        <span className="hidden truncate font-mono text-[10px] uppercase tracking-[0.28em] text-faint sm:block">
+          Dream Journal Pictures · Sound Stage 9
+        </span>
+        <span className="glass shrink-0 rounded-full px-3.5 py-2 font-mono text-[10px] uppercase tracking-[0.22em] text-muted">
+          take {String(take).padStart(2, "0")}
+        </span>
       </header>
 
       {error ? (
-        <div className="animate-rise mx-auto mt-16 w-full max-w-md rounded-2xl border border-red-500/30 bg-red-500/[0.07] p-6 text-center">
-          <p className="font-display text-2xl tracking-[0.08em] text-red-300">
-            THE PROJECT IS CURSED
-          </p>
-          <p className="mt-3 text-sm leading-relaxed text-red-200/80">{error}</p>
+        <div className="glass-strong animate-pop mx-auto mt-20 w-full max-w-md rounded-3xl p-7 text-center shadow-[0_40px_120px_-40px_var(--glow-shadow)]">
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-chip-reshoot/15 text-2xl">
+            🎬
+          </span>
+          <p className="mt-4 font-display text-2xl text-ink">The shoot got cancelled</p>
+          <p className="mt-3 text-sm leading-relaxed text-muted">{error}</p>
           <button
             type="button"
             onClick={onBack}
-            className="mt-6 cursor-pointer rounded-xl border border-red-400/40 px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.24em] text-red-200 transition-colors hover:bg-red-500/10"
+            className="btn-primary mt-7 inline-flex h-11 cursor-pointer items-center rounded-full px-6 text-[12px] font-semibold uppercase tracking-[0.16em]"
           >
-            back to the booth
+            <span className="sheen" aria-hidden />
+            Back to the booth
           </button>
         </div>
       ) : (
         <>
-          <div
-            className="animate-rise mt-10 text-center"
-            style={{ animationDelay: "60ms" }}
-          >
-            <p className="font-mono text-[10px] uppercase tracking-[0.42em] text-gold/80">
+          <div className="animate-rise mt-14 text-center" style={{ animationDelay: "60ms" }}>
+            <p className="font-mono text-[10px] uppercase tracking-[0.42em] text-accent">
               Now filming
             </p>
-            <h2 className="mt-3 font-display text-4xl tracking-[0.06em] text-zinc-100 sm:text-6xl">
-              {label.toUpperCase()}
+            <h2 className="mt-3 font-display text-4xl text-ink sm:text-6xl">
+              {label}
             </h2>
             {script && (
-              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.3em] text-zinc-500">
+              <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.26em] text-faint">
                 {script.title} · {script.genre}
+              </p>
+            )}
+
+            {waiting !== null && (
+              <p className="animate-pop mx-auto mt-5 inline-flex items-center gap-2.5 rounded-full border border-chip-filming/30 bg-chip-filming/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.24em] text-chip-filming">
+                <span className="h-1.5 w-1.5 animate-rec rounded-full bg-chip-filming" />
+                Next shot in {Math.max(waiting, 0)}s — the film lab develops one reel at a time
               </p>
             )}
           </div>
 
-          <div className="animate-rise mt-9" style={{ animationDelay: "140ms" }}>
-            <div className="relative h-12 overflow-hidden rounded-lg border border-white/10 bg-black/60">
-              <div className="sprockets absolute inset-x-0 top-1 h-2 opacity-70" aria-hidden />
-              <div className="sprockets absolute inset-x-0 bottom-1 h-2 opacity-70" aria-hidden />
+          <div className="animate-rise mx-auto mt-10 w-full max-w-2xl" style={{ animationDelay: "140ms" }}>
+            <div className="glass relative h-3 overflow-hidden rounded-full">
               <div
-                className="absolute inset-y-2 left-0 rounded-sm bg-gradient-to-r from-amber-300/60 via-amber-300/80 to-amber-200 transition-[width] duration-500"
-                style={{ width: `${pctLabel}%` }}
-              />
+                className="relative h-full rounded-full bg-gradient-to-r from-violet via-fuchsia to-cyan transition-[width] duration-700 ease-out"
+                style={{ width: `${Math.max(pctLabel, 2)}%` }}
+              >
+                <span className="absolute inset-y-0 right-0 w-8 bg-white/40 blur-sm" aria-hidden />
+              </div>
             </div>
-            <div className="mt-2 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.28em] text-zinc-600">
+            <div className="mt-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.26em] text-faint">
               <span>Processing reel</span>
-              <span className="text-amber-200/90">{pctLabel}%</span>
+              <span className="text-accent">{pctLabel}%</span>
             </div>
           </div>
 
-          <div className="animate-rise mt-9 grid grid-cols-2 gap-4 sm:grid-cols-3" style={{ animationDelay: "220ms" }}>
+          <div
+            className="animate-rise mt-10 grid grid-cols-2 gap-4 pb-4 sm:grid-cols-3"
+            style={{ animationDelay: "220ms" }}
+          >
             {script?.scenes.map((scene, index) => {
               const state = sceneStates[index] ?? "waiting";
               const thumb = thumbs[index];
@@ -119,11 +130,11 @@ export default function Production({
               return (
                 <div
                   key={index}
-                  className={`rounded-sm bg-[#e9e2d2] p-2 pb-7 shadow-[0_20px_45px_-20px_rgba(0,0,0,0.85)] transition-transform duration-300 hover:-translate-y-1 ${
-                    index % 2 === 0 ? "-rotate-1" : "rotate-1"
+                  className={`glass overflow-hidden rounded-2xl p-2.5 transition-all duration-500 hover:-translate-y-1 ${
+                    state === "filming" ? "border-chip-filming/50 shadow-[0_20px_60px_-24px_var(--glow-shadow)]" : ""
                   }`}
                 >
-                  <div className="relative aspect-video overflow-hidden rounded-[3px] bg-[#101014]">
+                  <div className="relative aspect-video overflow-hidden rounded-xl bg-black/60">
                     {thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element -- object URL previews from generated frames
                       <img
@@ -134,45 +145,62 @@ export default function Production({
                         }`}
                       />
                     ) : (
-                      <div className="grid h-full place-items-center px-3 text-center">
+                      <div className="grid h-full place-items-center px-4 text-center">
                         {isPoster ? (
-                          <span className="text-shimmer font-display text-lg tracking-[0.08em]">
-                            {script.title.toUpperCase()}
+                          <span className="text-shimmer font-display text-lg">
+                            {script.title}
                           </span>
                         ) : isTitle ? (
-                          <span className="animate-rec font-display text-lg tracking-[0.3em] text-zinc-500">
-                            TITLE
+                          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-faint">
+                            Title card
                           </span>
                         ) : state === "reshoot" ? (
-                          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-amber-300/90">
-                            reshoot queued…
+                          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-chip-reshoot">
+                            Reshoot queued…
                           </span>
                         ) : (
-                          <span className="font-display text-2xl tracking-[0.2em] text-zinc-700">
-                            · · ·
+                          <span className="flex gap-1.5" aria-hidden>
+                            {[0, 1, 2].map((dot) => (
+                              <span
+                                key={dot}
+                                className="h-1.5 w-1.5 animate-rec rounded-full bg-faint/60"
+                                style={{ animationDelay: `${dot * 220}ms` }}
+                              />
+                            ))}
                           </span>
                         )}
                       </div>
                     )}
+
                     {state === "filming" && (
-                      <span className="absolute left-1.5 top-1.5 flex items-center gap-1.5 rounded-sm bg-black/70 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-red-300">
-                        <span className="h-1.5 w-1.5 animate-rec rounded-full bg-red-500" />
+                      <span className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-chip-filming backdrop-blur">
+                        <span className="h-1.5 w-1.5 animate-rec rounded-full bg-chip-filming" />
                         filming
                       </span>
                     )}
+                    {state === "ready" && (
+                      <span className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-chip-ready backdrop-blur">
+                        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="m4 12.5 5 5L20 6.5" />
+                        </svg>
+                        in the can
+                      </span>
+                    )}
                   </div>
-                  <div className="mt-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.18em] text-[#6b5f49]">
+
+                  <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 px-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-faint">
                     <span>
-                      Scene {String(index + 1).padStart(2, "0")} · {KIND_LABEL[scene.kind] ?? scene.kind}
+                      Scene {String(index + 1).padStart(2, "0")} ·{" "}
+                      {KIND_LABEL[scene.kind] ?? scene.kind}
                     </span>
                     <span
                       className={
                         state === "ready"
-                          ? "text-[#3f7a3f]"
+                          ? "text-chip-ready"
                           : state === "filming"
-                            ? "text-[#b23a2e]"
+                            ? "text-chip-filming"
                             : state === "reshoot"
-                              ? "text-[#a37227]"
+                              ? "text-chip-reshoot"
                               : ""
                       }
                     >
@@ -184,7 +212,7 @@ export default function Production({
             })}
           </div>
 
-          <p className="mt-8 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-zinc-600">
+          <p className="mt-8 pb-6 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-faint">
             The free studio films one scene at a time · the wait is part of the show
           </p>
         </>

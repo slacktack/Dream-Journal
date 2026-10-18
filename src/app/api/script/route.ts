@@ -17,6 +17,22 @@ const MODEL = process.env.DREAM_LLM_MODEL ?? "deepseek-v4.1-flash-free";
 
 const VALID_KINDS: SceneKind[] = ["setup", "escalation", "twist", "title", "end_card"];
 
+const VIBE_TONE: Array<[RegExp, ToneKey]> = [
+  [/rom-?com|romantic/i, "romance"],
+  [/horror|scary/i, "horror"],
+  [/noir|mystery/i, "noir"],
+  [/fantasy|epic/i, "fantasy"],
+  [/comedy|comedic/i, "comedy"],
+  [/blockbuster|action/i, "blockbuster"],
+];
+
+function toneFromVibe(vibe: string): ToneKey | null {
+  for (const [pattern, tone] of VIBE_TONE) {
+    if (pattern.test(vibe)) return tone;
+  }
+  return null;
+}
+
 function buildPrompt(
   dream: string,
   cast: string[],
@@ -30,7 +46,6 @@ function buildPrompt(
     ? `Set the trailer in ${city.trim()}.`
     : "Pick one real-feeling city as the set.";
   const vibeLine = vibe.trim() ? `Tone: ${vibe.trim()}.` : "";
-
   return `You are an elite movie-trailer screenwriter. Turn the dream below into a 30-second cinematic trailer script.
 
 Dream: """${dream}"""
@@ -46,10 +61,11 @@ Tone rules:
 - Let the dream's mood decide, and respect the requested vibe if given.
 
 Rules:
-- Exactly 6 or 7 scenes in this order: 1 "setup", then 2-3 "escalation", 1 "twist", 1 "title", 1 "end_card".
-- setup / escalation / twist: "vo" is one punchy voiceover line, max 14 words, present tense, escalating drama. No quotes inside.
+- Exactly 7 or 8 scenes in this order: 1 "setup", then 3-4 "escalation", 1 "twist", 1 "title", 1 "end_card".
+- Tell ONE complete story arc across the "vo" lines: introduce the dreamer and the night → the trouble grows → the stakes feel enormous → the twist reframes everything. Each line must move the story forward, in order, like scenes of a movie.
+- setup / escalation / twist: "vo" is one cinematic voiceover line, 6 to 18 words, present tense, escalating drama, emotionally true to the genre (a rom-com feels tender and funny, horror feels dreadful). No quotes inside.
 - title and end_card: "vo" must be an empty string.
-- "imagePrompt": vivid cinematic film-still description (subject, location, lighting, mood), 15-35 words, absolutely no text or letters in the image.
+- "imagePrompt": vivid cinematic film-still description (subject, location, lighting, color mood), 15-35 words, matching the genre's feeling (a rom-com is warm, bright and tender — never dark or scary; horror is cold and ominous). Absolutely no text or letters in the image.
 - title: 2-4 words, cinematic and funny.
 - genre: dramatic label, e.g. "A Dream-Psychological Thriller".
 - tagline: max 12 words, trailer-voice style.
@@ -57,7 +73,7 @@ Rules:
 - cast: 2-4 members, actor = a real first name, role = dramatic character name.
 
 Return ONLY strict JSON, no markdown, exactly this shape:
-{"title":"The Beach Exam","genre":"A Dream-Psychological Thriller","tagline":"This summer, one man will not graduate.","rating":"RATED D FOR DREAMS","tone":"horror","lang":"en","cast":[{"actor":"Rohan","role":"The Crab of Judgment"}],"scenes":[{"kind":"setup","vo":"Last night I showed up late.","imagePrompt":"..."},{"kind":"escalation","vo":"...","imagePrompt":"..."},{"kind":"escalation","vo":"...","imagePrompt":"..."},{"kind":"twist","vo":"...","imagePrompt":"..."},{"kind":"title","vo":"","imagePrompt":"..."},{"kind":"end_card","vo":"","imagePrompt":"empty"}]}`;
+{"title":"The Beach Exam","genre":"A Dream-Psychological Thriller","tagline":"This summer, one man will not graduate.","rating":"RATED D FOR DREAMS","tone":"horror","lang":"en","cast":[{"actor":"Rohan","role":"The Crab of Judgment"}],"scenes":[{"kind":"setup","vo":"Last night I arrived late, and the sea had taken my classroom.","imagePrompt":"..."},{"kind":"escalation","vo":"The tide kept rising, and every wave erased another answer.","imagePrompt":"..."},{"kind":"escalation","vo":"Something beneath the water knew my name before I did.","imagePrompt":"..."},{"kind":"escalation","vo":"Then the exam papers began to bleed ink like living things.","imagePrompt":"..."},{"kind":"twist","vo":"And when the professor turned, I saw he had never been human.","imagePrompt":"..."},{"kind":"title","vo":"","imagePrompt":"..."},{"kind":"end_card","vo":"","imagePrompt":"empty"}]}`;
 }
 
 function extractJson(text: string): unknown {
@@ -72,7 +88,7 @@ function str(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
-function normalizeScript(raw: unknown): TrailerScript {
+function normalizeScript(raw: unknown, forcedTone: ToneKey | null): TrailerScript {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
 
   const cast: CastMember[] = Array.isArray(obj.cast)
@@ -136,7 +152,9 @@ function normalizeScript(raw: unknown): TrailerScript {
     genre: str(obj.genre, 60) || "A Dream-Thing",
     tagline: str(obj.tagline, 120) || "Some dreams refuse to end.",
     rating: str(obj.rating, 40) || "RATED D FOR DREAMS",
-    tone: TONE_KEYS.includes(obj.tone as ToneKey) ? (obj.tone as ToneKey) : "blockbuster",
+    tone:
+      forcedTone ??
+      (TONE_KEYS.includes(obj.tone as ToneKey) ? (obj.tone as ToneKey) : "blockbuster"),
     lang: str(obj.lang, 2).toLowerCase() || "en",
     cast:
       cast.length > 0
@@ -171,6 +189,7 @@ export async function POST(request: Request) {
     : [];
   const city = typeof body.city === "string" ? body.city : "";
   const vibe = typeof body.vibe === "string" ? body.vibe : "";
+  const forcedTone = toneFromVibe(vibe);
 
   const messages = [
     {
@@ -182,8 +201,8 @@ export async function POST(request: Request) {
   ];
 
   const attempts: Array<Record<string, unknown>> = [
-    { model: MODEL, messages, temperature: 0.95, max_tokens: 1600, response_format: { type: "json_object" } },
-    { model: MODEL, messages, temperature: 0.95, max_tokens: 1600 },
+    { model: MODEL, messages, temperature: 0.9, max_tokens: 2600, response_format: { type: "json_object" } },
+    { model: MODEL, messages, temperature: 0.9, max_tokens: 2600 },
   ];
 
   let lastError = "Script generation failed";
@@ -207,7 +226,7 @@ export async function POST(request: Request) {
         lastError = "Empty LLM reply";
         continue;
       }
-      const script = normalizeScript(extractJson(content));
+      const script = normalizeScript(extractJson(content), forcedTone);
       return Response.json(script);
     } catch (error) {
       lastError = error instanceof Error ? error.message : "Unknown error";

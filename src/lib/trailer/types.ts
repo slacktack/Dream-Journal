@@ -53,7 +53,7 @@ export const LEAD = 1.6;
 export const END_PAD = 1.4;
 export const VO_GAP = 0.55;
 export const VO_DELAY = 0.15;
-export const VO_RATE = 0.93;
+export const VO_RATE = 1.0;
 export const DUCK_LEVEL = 0.45;
 
 export interface SceneWindow {
